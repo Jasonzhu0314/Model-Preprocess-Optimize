@@ -6,7 +6,7 @@
 目前的yolo系列前处理主要使用的是letterbox，我在网上找到了很多关于letterbox的版本的实现方式，通过自己的整理和编写，测试代码的实现，主要还是想着以后集成到TensorRT中，加速模型推理，因为经过之前的测试发现，有时候图片预处理不当会影响模型推理
 
 - [x] cpu-opencv: 缩放+copymakeborder+normalize+通道转换
-- [ ] cuda: 缩放+copymakeborder+normalize+cpu+通道转换
+- [x] cuda: 缩放+copymakeborder+normalize+cpu+通道转换
 - [ ] cuda-opnecv: 缩放+copymakeborder+normalize+cpu+通道转换
 - [ ] cuda-仿射变换
 
