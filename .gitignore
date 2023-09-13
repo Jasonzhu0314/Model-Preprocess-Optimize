@@ -1,0 +1,47 @@
+# 编译产生的文件和目录
+/build/
+/bin/
+/lib/
+*.o
+*.out
+build
+
+# 编译器生成的文件
+*.dSYM/
+*.gcno
+*.gcda
+
+# 依赖管理工具生成的目录
+/vendor/
+
+# IDE和编辑器生成的文件和目录
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln
+*.sdf
+*.db
+
+# 临时文件和备份文件
+*~
+*.swp
+*.bak
+
+# macOS系统文件
+.DS_Store
+
+# 编译器生成的Makefile文件
+Makefile
+
+# 用户自定义的配置文件，例如API密钥等
+config.ini
+secrets.ini
+
+# 依赖的库文件
+*.dll
+*.so
+*.dylib
+
+# 编译产生的可执行文件
+your_executable
