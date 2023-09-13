@@ -14,10 +14,39 @@ inline int divUp(int a, int b)
     return ceil((float) a / b);
 };
 
+
+__device__ inline void copymakeborder_op(
+    uint8_t* src, uint8_t* dst,
+    int top, int left, int out_width, 
+    int out_height, uint8_t border_value
+) {
+
+}
+
+__global__ void copymakeborder_kernel(
+                uint8_t *image, uint8_t* out_image,
+                uint32_t in_width, uint32_t in_height,
+                uint32_t out_width, uint32_t out_height, 
+                int top,
+                int left) 
+{
+    const int src_x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int src_y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (src_x < in_width && src_y < in_height) {
+        uint8_t* out_ptr = out_image + (src_y + top) * out_width * 3 + (src_x + left) * 3;
+        uint8_t* in_ptr = image + src_y * in_width * 3 + src_x * 3;
+        out_ptr[0] = in_ptr[0];
+        out_ptr[1] = in_ptr[1];
+        out_ptr[2] = in_ptr[2];
+    }
+
+}
+
 __global__ void resize_op(uint8_t* src, uint8_t* dst,
                             float scale_x, float scale_y, int src_width, 
-                            int src_height, int out_width, int out_height) {
-
+                            int src_height, int out_width, int out_height) 
+{
     const int dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     const int dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -57,42 +86,24 @@ __global__ void resize_op(uint8_t* src, uint8_t* dst,
     }
 }
 
-
-__device__ inline void copymakeborder_op(
-    uint8_t* src, uint8_t* dst,
-    int top, int left, int out_width, 
-    int out_height, uint8_t border_value
-) {
-
-}
-
-namespace cudapre {
-
-__global__ void copymakeborder_kernel(
-                uint8_t *image, 
-                uint8_t* out_image,
-                uint32_t in_width, 
-                uint32_t in_height,
-                uint32_t out_width,
-                uint32_t out_height, 
-                int top,
-                int left
-) {
-    
+__global__ void normalize_kernel(
+                uint8_t *image, float* out_image,
+                uint32_t in_width, uint32_t in_height,
+                float c1, float c2, float c3) 
+{
     const int src_x = blockIdx.x * blockDim.x + threadIdx.x;
     const int src_y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (src_x < in_width && src_y < in_height) {
-        uint8_t* out_ptr = out_image + (src_y + top) * out_width * 3 + (src_x + left) * 3;
+        float* out_ptr = out_image + src_y * in_width * 3 + src_x * 3;
         uint8_t* in_ptr = image + src_y * in_width * 3 + src_x * 3;
-        out_ptr[0] = in_ptr[0];
-        out_ptr[1] = in_ptr[1];
-        out_ptr[2] = in_ptr[2];
+        out_ptr[0] = float(in_ptr[0]) * c1 ;
+        out_ptr[1] = float(in_ptr[1]) * c2;
+        out_ptr[2] = float(in_ptr[2]) * c3;
     }
-
 }
 
-
+namespace cudapre {
 // const nvcv::Tensor &inTensor, uint32_t batchSize, int inputLayerWidth, int inputLayerHeight,
                 // cudaStream_t stream, const nvcv::Tensor &outTensor
 
@@ -126,7 +137,7 @@ void gpu_resize(uint8_t *image,
 }
 
 
-void copymakeborder(uint8_t *image, 
+void gpu_copymakeborder(uint8_t *image, 
                 uint8_t* outImage,
                 cudaStream_t stream,
                 uint32_t in_width, 
@@ -150,6 +161,25 @@ void copymakeborder(uint8_t *image,
 
 }
 
+void gpu_normalize(uint8_t *image, 
+                float* out_image,
+                cudaStream_t stream,
+                uint32_t in_width, 
+                uint32_t in_height,
+                float c1, float c2, float c3)
+{
+    const int batch_size = 1;
+    const int THREADS_PER_BLOCK = 256; //256?  64?
+    const int BLOCK_WIDTH       = 8;   //as in 32x4 or 32x8.  16x8 and 16x16 are also viable
+
+    const dim3 blockSize(BLOCK_WIDTH, THREADS_PER_BLOCK / BLOCK_WIDTH, 1);
+    const dim3 gridSize(divUp(in_width, blockSize.x), divUp(in_height, blockSize.y), batch_size);
+
+    normalize_kernel<<<gridSize, blockSize, 0, stream>>>
+                (image, out_image, in_width, in_height, c1, c2, c3);
+    CHECK_RUN();
+
+}
 
 void cpu_resize(uint8_t* src, 
                 uint8_t* dst,
@@ -231,17 +261,6 @@ void cpu_copymakeborder(uint8_t* src,
 }
 
 
-void cpu_letterbox(uint8_t* src, 
-                uint8_t* dst,
-                uint32_t src_width, 
-                uint32_t src_height,
-                uint32_t out_width,
-                uint32_t out_height
-) {
-    // cpu_resize(src, dst, src_width, src_height, out_width, out_height);
-
-
-}
 
 };
 

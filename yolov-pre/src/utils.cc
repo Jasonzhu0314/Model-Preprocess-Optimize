@@ -44,7 +44,7 @@ void cmp_mat(cv::Mat& cpu_img, cv::Mat &gpu_img, int width, int height) {
             cv::Vec3b gpu_pixel = gpu_img.at<cv::Vec3b>(i, j);
             for (int c = 0; c < 3; c++) {
                 if (cpu_pixel[c] != gpu_pixel[c]) {
-                    // printf("[%d][%d][%d]:cpu[%d] != gpu[%d]\n", i, j, c, cpu_pixel[c], gpu_pixel[c]);
+                    printf("[%d][%d][%d]:cpu[%d] != gpu[%d]\n", i, j, c, cpu_pixel[c], gpu_pixel[c]);
                     max_inter = std::max(int(abs(cpu_pixel[c] - gpu_pixel[c])), max_inter);
                 }
             }
@@ -61,14 +61,14 @@ void cmp_vector(std::vector<float> &a, std::vector<float> &b, int width, int hei
     for (int c = 0; c < 3; c++) {
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++) {
-                float* a_ptr = a.data() + c * height * width;
-                float* b_ptr = b.data() + c * height * width;
+                float* a_ptr = a.data() + c * height * width + i * width;
+                float* b_ptr = b.data() + c * height * width + i * width;
                 if (a_ptr[j] - b_ptr[j] > 1e-5) {
-                    // printf("[%d][%d][%d]:cpu[%d] != gpu[%d]\n", i, j, c, cpu_pixel[c], gpu_pixel[c]);
-                    max_inter = std::max(abs(a_ptr[j] - b_ptr[c]), max_inter);
+                    // printf("[%d][%d][%d]:cpu[%f] != gpu[%f]\n", i, j, c, a_ptr[j], b_ptr[j]);
+                    max_inter = std::max(abs(a_ptr[j] - b_ptr[j]), max_inter);
                 }
             }
         }
     }
-    printf("max inter:%d\n", max_inter);
+    printf("max inter:%f\n", max_inter);
 }
