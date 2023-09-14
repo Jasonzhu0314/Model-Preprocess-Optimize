@@ -37,3 +37,5 @@ boost：主要是使用filesystem读取目录文件，安装参考`sudo apt-get 
 [CV-CUDA](https://github.com/CVCUDA/CV-CUDA)
 
 [Kernel Launch](https://zhuanlan.zhihu.com/p/544492099?utm_id=0)
+
+[CV-CUDA-yolov前处理demo](https://zhuanlan.zhihu.com/p/637458406)

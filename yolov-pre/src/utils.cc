@@ -44,7 +44,7 @@ void cmp_mat(cv::Mat& cpu_img, cv::Mat &gpu_img, int width, int height) {
             cv::Vec3b gpu_pixel = gpu_img.at<cv::Vec3b>(i, j);
             for (int c = 0; c < 3; c++) {
                 if (cpu_pixel[c] != gpu_pixel[c]) {
-                    printf("[%d][%d][%d]:cpu[%d] != gpu[%d]\n", i, j, c, cpu_pixel[c], gpu_pixel[c]);
+                    // printf("[%d][%d][%d]:cpu[%d] != gpu[%d]\n", i, j, c, cpu_pixel[c], gpu_pixel[c]);
                     max_inter = std::max(int(abs(cpu_pixel[c] - gpu_pixel[c])), max_inter);
                 }
             }

@@ -76,4 +76,9 @@ void gpu_normalize(uint8_t *image,
                 uint32_t in_height,
                 float c1, float c2, float c3);
 
+void gpu_hwc2chw(float* image, 
+                float* out_image,
+                cudaStream_t stream,
+                uint32_t in_width, 
+                uint32_t in_height);
 };

@@ -103,6 +103,27 @@ __global__ void normalize_kernel(
     }
 }
 
+__global__ void reformat_kernel(float *image, 
+                float* R,
+                float* G,
+                float* B,
+                uint32_t in_width, 
+                uint32_t in_height) 
+{
+    const int sx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int sy = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (sx < in_width && sy < in_height) {
+        float* in_ptr = image + sy * in_width * 3 + sx * 3;
+        float* r_ptr = R + sy * in_width + sx;
+        float* g_ptr = G + sy * in_width + sx;
+        float* b_ptr = B + sy * in_width + sx;
+        *r_ptr = in_ptr[0];
+        *g_ptr = in_ptr[1];
+        *b_ptr = in_ptr[2];
+    }
+}
+
 namespace cudapre {
 // const nvcv::Tensor &inTensor, uint32_t batchSize, int inputLayerWidth, int inputLayerHeight,
                 // cudaStream_t stream, const nvcv::Tensor &outTensor
@@ -179,6 +200,27 @@ void gpu_normalize(uint8_t *image,
                 (image, out_image, in_width, in_height, c1, c2, c3);
     CHECK_RUN();
 
+}
+
+void gpu_hwc2chw(float* image, 
+                float* out_image,
+                cudaStream_t stream,
+                uint32_t in_width, 
+                uint32_t in_height) 
+{
+    const int batch_size = 1;
+    const int THREADS_PER_BLOCK = 256; //256?  64?
+    const int BLOCK_WIDTH       = 8;   //as in 32x4 or 32x8.  16x8 and 16x16 are also viable
+
+    const dim3 blockSize(BLOCK_WIDTH, THREADS_PER_BLOCK / BLOCK_WIDTH, 1);
+    const dim3 gridSize(divUp(in_width, blockSize.x), divUp(in_height, blockSize.y), batch_size);
+    float* R = out_image;
+    float* G = out_image + in_width * in_height;
+    float* B = out_image + in_width * in_height * 2;
+
+    reformat_kernel<<<gridSize, blockSize, 0, stream>>>
+                (image, R, G, B, in_width, in_height);
+    CHECK_RUN();
 }
 
 void cpu_resize(uint8_t* src, 

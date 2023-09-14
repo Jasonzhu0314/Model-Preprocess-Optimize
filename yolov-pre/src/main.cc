@@ -27,6 +27,7 @@ void convertChwToHwc(cv::Mat& in, float* out, int height, int width) {
     int chanelLength = height * width;
     for (int c = 0; c < 3; ++c) {
         memcpy(out, channelsArray[c].data, height * width * sizeof(float));
+        // memcpy(out, channelsArray[c].data, height * width);
         out += height * width;
     }
 }
@@ -107,6 +108,9 @@ void gpu_letterbox(cv::Mat &resize_out, cv::Mat& res,
     float* gpu_out_dev;
     CHECK_CUDA_ERROR(cudaMalloc(&gpu_out_dev, out_nums * sizeof(float)));
 
+    float* gpu_chw_dev;
+    CHECK_CUDA_ERROR(cudaMalloc(&gpu_chw_dev, out_nums * sizeof(float)));
+
     cv::Mat float_res(out_h, out_w, CV_32FC3);
     std::vector<float> chw(out_nums);
 
@@ -121,29 +125,30 @@ void gpu_letterbox(cv::Mat &resize_out, cv::Mat& res,
         int newUnpad[2] {(int)std::round((float)shape.width * r),
                      (int)std::round((float)shape.height * r)};
         resize_out = cv::Mat(newUnpad[1], newUnpad[0], CV_8UC3);
-        uint32_t out_width = resize_out.cols;
-        uint32_t out_height = resize_out.rows;
-        printf("gpu resize h:%d, gpu resize w: %d\n", out_height, out_width);
+        uint32_t resize_width = resize_out.cols;
+        uint32_t resize_height = resize_out.rows;
+        printf("gpu resize h:%d, gpu resize w: %d\n", resize_height, resize_width);
 
         double cpu_start = cpuSecond();
         {
             CHECK_CUDA_ERROR(cudaMemcpyAsync(data_dev, img.data, nums, cudaMemcpyHostToDevice, stream));
-            cudapre::gpu_resize(data_dev, resize_data_dev, stream, img.cols, img.rows, out_width, out_height);
-            CHECK_CUDA_ERROR(cudaMemcpyAsync(resize_out.data, resize_data_dev, out_width * out_height * 3, cudaMemcpyDeviceToHost, stream));
+            cudapre::gpu_resize(data_dev, resize_data_dev, stream, img.cols, img.rows, resize_width, resize_height);
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(resize_out.data, resize_data_dev, resize_width * resize_height * 3, cudaMemcpyDeviceToHost, stream));
 
             CHECK_CUDA_ERROR(cudaMemcpyAsync(res_data_dev, res.data, out_nums, cudaMemcpyHostToDevice, stream));
             cudapre::gpu_copymakeborder(resize_data_dev, res_data_dev, stream, resize_out.cols, resize_out.rows, res.cols, res.rows);
             CHECK_CUDA_ERROR(cudaMemcpyAsync(res.data, res_data_dev, out_nums, cudaMemcpyDeviceToHost, stream));
 
             cudapre::gpu_normalize(res_data_dev, gpu_out_dev, stream, res.cols, res.rows, 1.0/255.0, 1.0/255.0, 1.0/255.0);
-            CHECK_CUDA_ERROR(cudaMemcpyAsync(float_res.ptr<float>(), gpu_out_dev, out_nums * sizeof(float), cudaMemcpyDeviceToHost, stream));
+
+            cudapre::gpu_hwc2chw(gpu_out_dev, gpu_chw_dev, stream, out_w, out_h);
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(gpu_out.data(), gpu_chw_dev, out_nums * sizeof(float), cudaMemcpyDeviceToHost, stream));
+
+            // CHECK_CUDA_ERROR(cudaMemcpyAsync(float_res.ptr<float>(), gpu_out_dev, out_nums * sizeof(float), cudaMemcpyDeviceToHost, stream));
             cudaStreamSynchronize(stream);
-            // printf("float_res[0]:%f\n", float_res.ptr<float>()[0]);
-
-            double cpu_end = cpuSecond();
-            convertChwToHwc(float_res, gpu_out.data(), out_h, out_w);
-            printf("gpu convert: %.2fms \n", (cpu_end - cpu_start) * 1000);
-
+            // double cpu_end = cpuSecond();
+            // convertChwToHwc(float_res, gpu_out.data(), out_h, out_w);
+            // printf("gpu convert: %.2fms \n", (cpu_end - cpu_start) * 1000);
         }
 
         double cpu_end = cpuSecond();
@@ -256,6 +261,7 @@ int main() {
     printf("gpu_resize cols:%d, rows:%d\n", gpu_resize_res.cols, gpu_resize_res.rows);
     cmp_mat(opencv_resize_res, gpu_resize_res, gpu_resize_res.cols, gpu_resize_res.rows);
     cmp_mat(opencv_res, gpu_res, gpu_res.cols, gpu_res.rows);
+    printf("gpu_outdev:[0]:%f\n", gpu_out[0]);
     cmp_vector(cpu_out, gpu_out, w, h);
 
     return 0;
