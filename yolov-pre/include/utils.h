@@ -12,6 +12,6 @@ void getAllImageFilesInFolder(const fs::path& folderPath, std::vector<std::strin
 
 bool isImageFile(const std::string& filename);
 
-void cmp_mat(cv::Mat& cpu_img, cv::Mat &gpu_img, int width, int height);
+int cmp_mat(cv::Mat& cpu_img, cv::Mat &gpu_img, int width, int height);
 
-void cmp_vector(std::vector<float> &a, std::vector<float> &b, int width, int height);
+float cmp_vector(std::vector<float> &a, std::vector<float> &b, int width, int height, float epsilon=1e-5);

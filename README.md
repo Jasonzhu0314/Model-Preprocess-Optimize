@@ -7,10 +7,11 @@
 
 - [x] cpu-opencv: 缩放+copymakeborder+normalize+通道转换
 - [x] cuda: 缩放+copymakeborder+normalize+cpu+通道转换
+- [ ] cuda: 缩放+copymakeborder+normalize+cpu+通道转换(kernel fusion版本)
 - [ ] cuda-opnecv: 缩放+copymakeborder+normalize+cpu+通道转换
 - [ ] cuda-仿射变换
 
-其实也看过CV-CUDA的代码，但是我在想一个问题，CV-CUDA的letterbox的每个阶段都启动一个核函数，相当于多次启动核函数，是否会有kernel launch overhead问题，回头找时间测试一下
+看过CV-CUDA的代码，但是CV-CUDA的letterbox的每个阶段都启动一个核函数，相当于多次启动核函数，是否会有kernel launch overhead问题，回头找时间测试一下
 
 ## environment
 
@@ -27,6 +28,15 @@ cuda安装，网上教程挺多的，也可以直接使用tensorRT的镜像，�
 
 boost：主要是使用filesystem读取目录文件，安装参考`sudo apt-get install libboost-all-dev`，如果不需要可把代码中的关于boost中的代码删除
 
+
+### run
+
+```
+mkdir build && cd build
+cmake ..
+make
+
+```
 
 ### reference
 

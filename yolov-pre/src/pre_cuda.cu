@@ -138,8 +138,6 @@ void gpu_resize(uint8_t *image,
 {
     float scale_x = ((float)src_width) / out_width;
     float scale_y = ((float)src_height) / out_height;
-    printf("scale_x: %f, scale_y: %f\n", scale_x, scale_y);
-
 
     const int batch_size = 1;
     const int THREADS_PER_BLOCK = 256; //256?  64?
@@ -153,8 +151,6 @@ void gpu_resize(uint8_t *image,
                                                 src_height, out_width, out_height);
 
     CHECK_RUN();
-    // CHECK_CUDA_ERROR(cudaMalloc(&indata, nums));
-    // cudaMemcpyAsync()
 }
 
 

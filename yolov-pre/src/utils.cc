@@ -36,7 +36,7 @@ void getAllImageFilesInFolder(const fs::path& folderPath, std::vector<std::strin
     }
 }
 
-void cmp_mat(cv::Mat& cpu_img, cv::Mat &gpu_img, int width, int height) {
+int cmp_mat(cv::Mat& cpu_img, cv::Mat &gpu_img, int width, int height) {
     int max_inter = 0;
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
@@ -45,17 +45,17 @@ void cmp_mat(cv::Mat& cpu_img, cv::Mat &gpu_img, int width, int height) {
             for (int c = 0; c < 3; c++) {
                 if (cpu_pixel[c] != gpu_pixel[c]) {
                     // printf("[%d][%d][%d]:cpu[%d] != gpu[%d]\n", i, j, c, cpu_pixel[c], gpu_pixel[c]);
-                    max_inter = std::max(int(abs(cpu_pixel[c] - gpu_pixel[c])), max_inter);
+                    max_inter = std::max(abs(int(cpu_pixel[c]) - int(gpu_pixel[c])), max_inter);
                 }
             }
         }
     }
 
-    printf("max inter:%d\n", max_inter);
+    return max_inter;
 }
 
 
-void cmp_vector(std::vector<float> &a, std::vector<float> &b, int width, int height) {
+float cmp_vector(std::vector<float> &a, std::vector<float> &b, int width, int height, float epsilon) {
     float max_inter = 0.;
     
     for (int c = 0; c < 3; c++) {
@@ -63,12 +63,12 @@ void cmp_vector(std::vector<float> &a, std::vector<float> &b, int width, int hei
             for (int j = 0; j < width; j++) {
                 float* a_ptr = a.data() + c * height * width + i * width;
                 float* b_ptr = b.data() + c * height * width + i * width;
-                if (a_ptr[j] - b_ptr[j] > 1e-5) {
+                if (a_ptr[j] - b_ptr[j] > epsilon) {
                     // printf("[%d][%d][%d]:cpu[%f] != gpu[%f]\n", i, j, c, a_ptr[j], b_ptr[j]);
                     max_inter = std::max(abs(a_ptr[j] - b_ptr[j]), max_inter);
                 }
             }
         }
     }
-    printf("max inter:%f\n", max_inter);
+    return max_inter;
 }
