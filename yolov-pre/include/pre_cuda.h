@@ -67,7 +67,9 @@ void gpu_copymakeborder(uint8_t *image,
                 uint32_t in_width, 
                 uint32_t in_height,
                 uint32_t out_width,
-                uint32_t out_height);
+                uint32_t out_height,
+                uint8_t border_val
+                );
 
 void gpu_normalize(uint8_t *image, 
                 float* out_image,
@@ -81,4 +83,15 @@ void gpu_hwc2chw(float* image,
                 cudaStream_t stream,
                 uint32_t in_width, 
                 uint32_t in_height);
+
+void gpu_fusion(uint8_t *image,
+                float* out_image,
+                cudaStream_t stream,
+                uint32_t in_width, 
+                uint32_t in_height,
+                uint32_t out_width,
+                uint32_t out_height,
+                float c1, float c2, float c3,
+                uint8_t border_val);
+
 };

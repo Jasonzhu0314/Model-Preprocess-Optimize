@@ -28,17 +28,24 @@ __global__ void copymakeborder_kernel(
                 uint32_t in_width, uint32_t in_height,
                 uint32_t out_width, uint32_t out_height, 
                 int top,
-                int left) 
+                int left,
+                uint8_t border_val) 
 {
-    const int src_x = blockIdx.x * blockDim.x + threadIdx.x;
-    const int src_y = blockIdx.y * blockDim.y + threadIdx.y;
+    const int sx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int sy = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (src_x < in_width && src_y < in_height) {
-        uint8_t* out_ptr = out_image + (src_y + top) * out_width * 3 + (src_x + left) * 3;
-        uint8_t* in_ptr = image + src_y * in_width * 3 + src_x * 3;
-        out_ptr[0] = in_ptr[0];
-        out_ptr[1] = in_ptr[1];
-        out_ptr[2] = in_ptr[2];
+    if (sx < out_width && sy < out_height) {
+        uint8_t* out_ptr = out_image + sy * out_width * 3 + sx * 3;
+        if (sx < left || sy < top || sx > in_width + left || sy > in_height + top) {
+            out_ptr[0] = border_val;
+            out_ptr[1] = border_val;
+            out_ptr[2] = border_val;
+        } else {
+            uint8_t* in_ptr = image + (sy - top) * in_width * 3 + (sx - left) * 3;
+            out_ptr[0] = in_ptr[0];
+            out_ptr[1] = in_ptr[1];
+            out_ptr[2] = in_ptr[2];
+        }
     }
 
 }
@@ -97,7 +104,7 @@ __global__ void normalize_kernel(
     if (src_x < in_width && src_y < in_height) {
         float* out_ptr = out_image + src_y * in_width * 3 + src_x * 3;
         uint8_t* in_ptr = image + src_y * in_width * 3 + src_x * 3;
-        out_ptr[0] = float(in_ptr[0]) * c1 ;
+        out_ptr[0] = float(in_ptr[0]) * c1;
         out_ptr[1] = float(in_ptr[1]) * c2;
         out_ptr[2] = float(in_ptr[2]) * c3;
     }
@@ -123,6 +130,35 @@ __global__ void reformat_kernel(float *image,
         *b_ptr = in_ptr[2];
     }
 }
+
+
+__global__ void fusion_kernel(
+    uint8_t *image, float* R, float* G, float* B,
+    uint32_t in_width, uint32_t in_height,
+    float c1, float c2, float c3, int top, int left,
+    uint32_t out_width, uint32_t out_height, uint8_t border_val
+) {
+    const int sx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int sy = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (sx < out_width && sy < out_height) {
+        float* r_ptr = R + sy * out_width + sx;
+        float* g_ptr = G + sy * out_width + sx;
+        float* b_ptr = B + sy * out_width + sx;
+        if (sx < left || sy < top || sx > in_width + left || sy > in_height + top) {
+            // 边界处理
+            *r_ptr = float(border_val) * c1;
+            *g_ptr = float(border_val) * c2;
+            *b_ptr = float(border_val) * c3;
+        } else {
+            uint8_t* in_ptr = image + (sy - top) * in_width * 3 + (sx - left) * 3;
+            *r_ptr = float(in_ptr[0]) * c1;
+            *g_ptr = float(in_ptr[1]) * c2;
+            *b_ptr = float(in_ptr[2]) * c3;
+        }
+    }
+}
+
 
 namespace cudapre {
 // const nvcv::Tensor &inTensor, uint32_t batchSize, int inputLayerWidth, int inputLayerHeight,
@@ -160,7 +196,8 @@ void gpu_copymakeborder(uint8_t *image,
                 uint32_t in_width, 
                 uint32_t in_height,
                 uint32_t out_width,
-                uint32_t out_height)
+                uint32_t out_height,
+                uint8_t border_val)
 {
     int top = std::round(float(out_height - in_height) / 2 - 0.1f);
     int left = std::round(float(out_width - in_width) / 2 - 0.1f);
@@ -170,10 +207,10 @@ void gpu_copymakeborder(uint8_t *image,
     const int BLOCK_WIDTH       = 8;   //as in 32x4 or 32x8.  16x8 and 16x16 are also viable
 
     const dim3 blockSize(BLOCK_WIDTH, THREADS_PER_BLOCK / BLOCK_WIDTH, 1);
-    const dim3 gridSize(divUp(in_width, blockSize.x), divUp(in_height, blockSize.y), batch_size);
+    const dim3 gridSize(divUp(out_width, blockSize.x), divUp(out_height, blockSize.y), batch_size);
 
     copymakeborder_kernel<<<gridSize, blockSize, 0, stream>>>
-                (image, outImage, in_width, in_height, out_width, out_height, top, left);
+                (image, outImage, in_width, in_height, out_width, out_height, top, left, border_val);
     CHECK_RUN();
 
 }
@@ -217,6 +254,36 @@ void gpu_hwc2chw(float* image,
     reformat_kernel<<<gridSize, blockSize, 0, stream>>>
                 (image, R, G, B, in_width, in_height);
     CHECK_RUN();
+}
+
+void gpu_fusion(uint8_t *image,
+                float* out_image,
+                cudaStream_t stream,
+                uint32_t in_width, 
+                uint32_t in_height,
+                uint32_t out_width,
+                uint32_t out_height,
+                float c1, float c2, float c3,
+                uint8_t border_val) 
+{
+    int top = std::round(float(out_height - in_height) / 2 - 0.1f);
+    int left = std::round(float(out_width - in_width) / 2 - 0.1f);
+
+    const int batch_size = 1;
+    const int THREADS_PER_BLOCK = 256; //256?  64?
+    const int BLOCK_WIDTH       = 8;   //as in 32x4 or 32x8.  16x8 and 16x16 are also viable
+
+    const dim3 blockSize(BLOCK_WIDTH, THREADS_PER_BLOCK / BLOCK_WIDTH, 1);
+    const dim3 gridSize(divUp(out_width, blockSize.x), divUp(out_height, blockSize.y), batch_size);
+
+    float* R = out_image;
+    float* G = out_image + out_width * out_height;
+    float* B = out_image + out_width * out_height * 2;
+
+    fusion_kernel<<<gridSize, blockSize, 0, stream>>>(
+        image, R, G, B, in_width, in_height, c1, c2, c3,
+        top, left, out_width, out_height, border_val
+    );
 }
 
 void cpu_resize(uint8_t* src, 
@@ -270,30 +337,6 @@ void cpu_resize(uint8_t* src,
                     = uint8_t((1.0f - fx) * (aPtr[sp_left + i] * (1.0f - fy) + bPtr[sp_left + i] * fy)
                              + fx * (aPtr[sp_right + i] * (1.0f - fy) + bPtr[sp_right + i] * fy));
             }
-        }
-    }
-}
-
-
-void cpu_copymakeborder(uint8_t* src, 
-                uint8_t* dst,
-                uint32_t in_width,
-                uint32_t in_height,
-                uint32_t out_width,
-                uint32_t out_height,
-                uint8_t border_value) 
-{
-    int top = std::round(float(out_height - in_height) / 2 - 0.1f);
-    int left = std::round(float(out_width - in_width) / 2 - 0.1f);
-    
-    // dst默认初始化为114的值, 所以空闲位置不用考虑
-    for (int i = 0; i < in_height; i++) {
-        uint8_t* dst_ptr = dst + (i + top) * out_width * 3;
-        uint8_t* src_ptr = src + i * in_width * 3;
-        for (int j = 0; j < in_width; j++) {
-            dst_ptr[(j + left) * 3] = src_ptr[j * 3];
-            dst_ptr[(j + left) * 3 + 1] = src_ptr[j * 3 + 1];
-            dst_ptr[(j + left) * 3 + 2] = src_ptr[j * 3 + 2];
         }
     }
 }
