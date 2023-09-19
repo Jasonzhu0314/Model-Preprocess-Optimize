@@ -38,7 +38,7 @@ make
 
 ### Result
 cpu的letterbox结果<br>
-![](yolov-pre/imgs/opencv_image.jpg)
+![](yolov-pre/imgs/opencv_image.jpg)<br>
 gpu的letterbox的结果<br>
 ![](yolov-pre/imgs/gpu_image.jpg)
 
