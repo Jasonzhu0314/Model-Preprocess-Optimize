@@ -37,14 +37,14 @@ make
 ```
 
 ### Result
-cpu的letterbox结果
+cpu的letterbox结果<br>
 ![](yolov-pre/imgs/opencv_image.jpg)
-gpu的letterbox的结果
+gpu的letterbox的结果<br>
 ![](yolov-pre/imgs/gpu_image.jpg)
 
 ### reference
-[opencv的双线性插值原理](https://zhuanlan.zhihu.com/p/513569382)
-[use-tensorrt-c-api-with-opencv](https://www.dotndash.net/2023/03/09/using-tensorrt-with-opencv-cuda.html#use-tensorrt-c-api-with-opencv)
-[CV-CUDA](https://github.com/CVCUDA/CV-CUDA)
-[Kernel Launch](https://zhuanlan.zhihu.com/p/544492099?utm_id=0)
-[CV-CUDA-yolov前处理demo](https://zhuanlan.zhihu.com/p/637458406)
+[opencv的双线性插值原理](https://zhuanlan.zhihu.com/p/513569382)<br>
+[use-tensorrt-c-api-with-opencv](https://www.dotndash.net/2023/03/09/using-tensorrt-with-opencv-cuda.html#use-tensorrt-c-api-with-opencv)<br>
+[CV-CUDA](https://github.com/CVCUDA/CV-CUDA)<br>
+[Kernel Launch](https://zhuanlan.zhihu.com/p/544492099?utm_id=0)<br>
+[CV-CUDA-yolov前处理demo](https://zhuanlan.zhihu.com/p/637458406)<br>
