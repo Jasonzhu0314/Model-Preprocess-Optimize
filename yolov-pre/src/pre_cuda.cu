@@ -36,7 +36,7 @@ __global__ void copymakeborder_kernel(
 
     if (sx < out_width && sy < out_height) {
         uint8_t* out_ptr = out_image + sy * out_width * 3 + sx * 3;
-        if (sx < left || sy < top || sx > in_width + left || sy > in_height + top) {
+        if (sx < left || sy < top || sx >= in_width + left || sy >= in_height + top) {
             out_ptr[0] = border_val;
             out_ptr[1] = border_val;
             out_ptr[2] = border_val;
@@ -145,7 +145,7 @@ __global__ void fusion_kernel(
         float* r_ptr = R + sy * out_width + sx;
         float* g_ptr = G + sy * out_width + sx;
         float* b_ptr = B + sy * out_width + sx;
-        if (sx < left || sy < top || sx > in_width + left || sy > in_height + top) {
+        if (sx < left || sy < top || sx >= in_width + left || sy >= in_height + top) {
             // 边界处理
             *r_ptr = float(border_val) * c1;
             *g_ptr = float(border_val) * c2;
@@ -159,6 +159,79 @@ __global__ void fusion_kernel(
     }
 }
 
+
+inline __device__ void resize_pixel(
+    uint8_t *image, int x, int y,
+    float* r_ptr, float* g_ptr, float* b_ptr,
+    float scale_x, float scale_y, 
+    uint32_t in_width, uint32_t in_height,
+    float c1, float c2, float c3
+) {
+
+    //y coordinate
+        // 原图的y坐标, +0.5到像素坐标中心，否则是像素的左上角
+        float fy = (float)((y + 0.5f) * scale_y - 0.5f);
+        // 左上角的y, 向下取整
+        int   sy = floor(fy);
+        fy -= sy;
+        //  防止越界
+        sy = max(0, min(sy, in_height - 2));
+        //row pointers
+        // sy,sx*3--BGR---BGR--BGR--sy,(sx+1)*3+1
+        // ----------------------------------
+        // sy+1,sx*3-BGR---BGR---BGR--sy+1,(sx+1)*3+1
+
+        const uint8_t *aPtr = image + sy * in_width * 3;     //start of upper row
+        const uint8_t *bPtr = image + (sy + 1) * in_width * 3; //start of lower row
+        //compute source data position and weight for [x0] components
+            float fx = (float)((x + 0.5f) * scale_x - 0.5f);
+            int   sx = floor(fx);
+            fx -= sx;
+            fx *= ((sx >= 0) && (sx < in_width - 1));
+            sx = max(0, min(sx, in_width - 2));
+        
+        uint32_t sp = sx * 3;
+        uint32_t sp_right = (sx + 1) * 3;
+        // uint32_t dp = dst_y * out_width * 3 + dst_x * 3;
+        // for (int i = 0; i < 3; i++) {
+            *r_ptr = float(uint8_t((1.0f - fx) * (aPtr[sp + 0] * (1.0f - fy) + bPtr[sp + 0] * fy)
+                            + fx * (aPtr[sp_right + 0] * (1.0f - fy) + bPtr[sp_right + 0] * fy))) * c1;
+
+            *g_ptr = float(uint8_t((1.0f - fx) * (aPtr[sp + 1] * (1.0f - fy) + bPtr[sp + 1] * fy)
+                            + fx * (aPtr[sp_right + 1] * (1.0f - fy) + bPtr[sp_right + 1] * fy))) * c2;
+
+            *b_ptr = float(uint8_t((1.0f - fx) * (aPtr[sp + 2] * (1.0f - fy) + bPtr[sp + 2] * fy)
+                            + fx * (aPtr[sp_right + 2] * (1.0f - fy) + bPtr[sp_right + 2] * fy))) * c3;
+}
+
+
+__global__ void fusion_all_kernel(
+    uint8_t *image, float* R, float* G, float* B,
+    uint32_t in_width, uint32_t in_height,
+    float c1, float c2, float c3, int top, int left,
+    uint32_t out_width, uint32_t out_height, uint8_t border_val,
+    uint32_t resized_width, uint32_t resized_height,
+    float scale_x, float scale_y
+) {
+    const int sx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int sy = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (sx < out_width && sy < out_height) {
+        float* r_ptr = R + sy * out_width + sx;
+        float* g_ptr = G + sy * out_width + sx;
+        float* b_ptr = B + sy * out_width + sx;
+        if (sx < left || sy < top || sx >= resized_width + left || sy >= resized_height + top) {
+            // 边界处理 ,大于缩放的边界直接赋值
+            *r_ptr = float(border_val) * c1;
+            *g_ptr = float(border_val) * c2;
+            *b_ptr = float(border_val) * c3;
+        } else {
+            // 缩放中心处理
+            resize_pixel(image, sx - left, sy - top, r_ptr, g_ptr, b_ptr, 
+                        scale_x, scale_y, in_width, in_height, c1, c2, c3);
+        }
+    }
+}
 
 namespace cudapre {
 // const nvcv::Tensor &inTensor, uint32_t batchSize, int inputLayerWidth, int inputLayerHeight,
@@ -285,6 +358,45 @@ void gpu_fusion(uint8_t *image,
         top, left, out_width, out_height, border_val
     );
 }
+
+
+void gpu_fusion_all(uint8_t *image,
+                float* out_image,
+                cudaStream_t stream,
+                uint32_t in_width, 
+                uint32_t in_height,
+                uint32_t resized_width,
+                uint32_t resized_height,
+                uint32_t out_width,
+                uint32_t out_height,
+                float c1, float c2, float c3,
+                uint8_t border_val) 
+{
+    float scale_x = ((float)in_width) / resized_width;
+    float scale_y = ((float)in_height) / resized_height;
+
+    const int batch_size = 1;
+    const int THREADS_PER_BLOCK = 256; //256?  64?
+    const int BLOCK_WIDTH       = 8;   //as in 32x4 or 32x8.  16x8 and 16x16 are also viable
+
+    const dim3 blockSize(BLOCK_WIDTH, THREADS_PER_BLOCK / BLOCK_WIDTH, 1);
+    const dim3 gridSize(divUp(out_width, blockSize.x), divUp(out_height, blockSize.y), batch_size);
+
+
+    int top = std::round(float(out_height - resized_height) / 2 - 0.1f);
+    int left = std::round(float(out_width - resized_width) / 2 - 0.1f);
+
+    float* R = out_image;
+    float* G = out_image + out_width * out_height;
+    float* B = out_image + out_width * out_height * 2;
+
+    fusion_all_kernel<<<gridSize, blockSize, 0, stream>>>(
+        image, R, G, B, in_width, in_height, c1, c2, c3,
+        top, left, out_width, out_height, border_val,
+        resized_width, resized_height, scale_x, scale_y
+    );
+}
+
 
 void cpu_resize(uint8_t* src, 
                 uint8_t* dst,
