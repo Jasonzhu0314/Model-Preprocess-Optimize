@@ -9,7 +9,7 @@
 #define MAX_HEIGHT 1920
 #define MAX_WIDTH 1080
 
-#define DEBUG 
+// #define DEBUG 
 
 inline void convertChwToHwc(cv::Mat& in, float* out, int height, int width) {
     std::vector<cv::Mat> channelsArray;
@@ -21,26 +21,32 @@ inline void convertChwToHwc(cv::Mat& in, float* out, int height, int width) {
     }
 }
 
-void cv_letterbox_normalize(const cv::Mat& img, cv::Mat& resize_img, 
+void cv_letterbox_normalize(cv::Mat& resize_img, 
                         cv::Mat& res, std::vector<float>& chw,
-                        int width, int height)
+                        int width, int height, 
+                        std::vector<std::string>& image_paths)
 {
-    int channel = 3;
-
     cv::Mat float_res(height, width, CV_32FC3);
     float* float_res_ptr = float_res.ptr<float>();
 
-    double cpu_start = cpuSecond();
-    {
+    double cpu_start, cpu_end;
+    double total_time = 0.;
+
+    for (auto img_path : image_paths) {
+        cv::Mat img = cv::imread(img_path);
+        cpu_start = cpuSecond();
         resize_op(img, resize_img, cv::Size(width, height));
         copymakeborder_op(resize_img, res);
         res.convertTo(float_res, CV_32FC3, 1.0 / 255.0);
         convertChwToHwc(float_res, chw.data(), height, width);
+        cpu_end = cpuSecond();
+        total_time += cpu_end - cpu_start;
+        #ifdef DEBUG
+            printf("opencv letterbox time: %.2f ms \n", (cpu_end - cpu_start) * 1000);
+            break;
+        #endif
     }
-
-    double cpu_end = cpuSecond();
-
-    printf("opencv letterbox time: %.2fms \n", (cpu_end - cpu_start) * 1000);
+    printf("opencv avg time: %.2f ms \n", total_time / image_paths.size() * 1000);
 
     std::string opencv_save_path = "../imgs/opencv_image.jpg";
     cv::imwrite(opencv_save_path, res);
@@ -77,6 +83,8 @@ void gpu_letterbox_normalize(cv::Mat &resize_out, cv::Mat& res,
     float* gpu_chw_dev;
     CHECK_CUDA_ERROR(cudaMalloc(&gpu_chw_dev, out_nums * sizeof(float)));
 
+    double gpu_start, gpu_end;
+    double total_time = 0.;
     for (const auto& img_path : image_paths) {
         cv::Mat img = cv::imread(img_path);
         cv::Size shape = img.size();
@@ -86,8 +94,8 @@ void gpu_letterbox_normalize(cv::Mat &resize_out, cv::Mat& res,
         int resize_width = (int)std::round((float)shape.width * r);
         int resize_height = (int)std::round((float)shape.height * r);
         resize_out = cv::Mat(resize_height, resize_width, CV_8UC3);
+        gpu_start = cpuSecond();
 
-        double cpu_start = cpuSecond();
         {
             // resize
             CHECK_CUDA_ERROR(cudaMemcpyAsync(data_dev, img.data, img.cols * img.rows * 3, cudaMemcpyHostToDevice, stream));
@@ -113,13 +121,16 @@ void gpu_letterbox_normalize(cv::Mat &resize_out, cv::Mat& res,
             cudaStreamSynchronize(stream);
         }
 
-        double cpu_end = cpuSecond();
-        printf("gpu resize time: %.2fms \n", (cpu_end - cpu_start) * 1000);
+        gpu_end = cpuSecond();
+        total_time += gpu_end - gpu_start;
         #ifdef DEBUG
+            printf("gpu resize time: %.2f ms \n", (gpu_end - gpu_start) * 1000);
             break;
         #endif
     }
+    printf("gpu avg time: %.2f ms\n", total_time / image_paths.size() * 1000);
 
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(res.data, res_data_dev, out_nums, cudaMemcpyDeviceToHost, stream));
     CHECK_CUDA_ERROR(cudaFree(resize_data_dev));
     CHECK_CUDA_ERROR(cudaFree(res_data_dev));
     CHECK_CUDA_ERROR(cudaFree(gpu_out_dev));
@@ -127,8 +138,6 @@ void gpu_letterbox_normalize(cv::Mat &resize_out, cv::Mat& res,
 
     std::string gpu_save_path = "../imgs/gpu_image.jpg";
     cv::imwrite(gpu_save_path, res);
-    gpu_save_path = "../imgs/gpu_resize_image.jpg";
-    cv::imwrite(gpu_save_path, resize_out);
 }
 
 void gpu_fusion_all(cv::Mat &resize_out, cv::Mat& res, 
@@ -150,6 +159,8 @@ void gpu_fusion_all(cv::Mat &resize_out, cv::Mat& res,
     const int out_nums = out_h * out_w * 3;
     float* gpu_chw_dev;
     CHECK_CUDA_ERROR(cudaMalloc(&gpu_chw_dev, out_nums * sizeof(float)));
+    double gpu_start, gpu_end;
+    double total_time = 0.;
 
     for (const auto& img_path : image_paths) {
         cv::Mat img = cv::imread(img_path);
@@ -161,7 +172,7 @@ void gpu_fusion_all(cv::Mat &resize_out, cv::Mat& res,
         int resize_height = (int)std::round((float)shape.height * r);
         resize_out = cv::Mat(resize_height, resize_width, CV_8UC3);
 
-        double cpu_start = cpuSecond();
+        gpu_start = cpuSecond();
         {
             CHECK_CUDA_ERROR(cudaMemcpyAsync(data_dev, img.data, img.cols * img.rows * 3, cudaMemcpyHostToDevice, stream));
             // letterbox 
@@ -175,11 +186,14 @@ void gpu_fusion_all(cv::Mat &resize_out, cv::Mat& res,
             cudaStreamSynchronize(stream);
         }
 
-        double cpu_end = cpuSecond();
+        gpu_end = cpuSecond();
+        total_time += gpu_end - gpu_start;
         #ifdef DEBUG
+            printf("gpu resize time: %.2f ms \n", (gpu_end - gpu_start) * 1000);
             break;
         #endif
     }
+    printf("gpu fusion avg time: %.2f ms \n", total_time / image_paths.size() * 1000);
 
     CHECK_CUDA_ERROR(cudaFree(gpu_chw_dev));
     CHECK_CUDA_ERROR(cudaFree(data_dev));
@@ -188,6 +202,7 @@ void gpu_fusion_all(cv::Mat &resize_out, cv::Mat& res,
     std::string gpu_save_path = "../imgs/gpu_fusion_all_image.jpg";
     cv::imwrite(gpu_save_path, res);
 }
+
 
 int main() {
     int desiredDeviceId = 7;
@@ -205,14 +220,9 @@ int main() {
     cv::Mat opencv_resize_res;
     cv::Mat opencv_res(out_h, out_w, CV_8UC3, color);
     std::vector<float> cpu_out(out_h * out_w * 3);
-
-        for (const auto& img_path : image_paths) {
-            std::cout << img_path << std::endl;
-            cv::Mat img = cv::imread(img_path);
-            cv_letterbox_normalize(img, opencv_resize_res, 
-                                opencv_res, cpu_out, out_w, out_h);
-            break;
-        }
+    cv_letterbox_normalize(opencv_resize_res, 
+                            opencv_res, cpu_out, out_w, out_h,
+                            image_paths);
 
     float vector_inter;
     cv::Mat gpu_res(out_h, out_w, CV_8UC3, color);
@@ -229,9 +239,6 @@ int main() {
     vector_inter = cmp_vector(gpu_fusion_all_out, gpu_out, out_w, out_h, 1e-5);
     printf("gpu & fusion gpu inter:%f\n", vector_inter);
 
-
-    gpu_letterbox_normalize(gpu_resize_res, gpu_res, gpu_out, image_paths, out_h, out_w);
-    gpu_fusion_all(gpu_fusion_all_res, gpu_fusion_resize_all_res, gpu_fusion_all_out, image_paths, out_h, out_w);
     // 比较结果
     // int max_inter = cmp_mat(opencv_resize_res, gpu_resize_res, gpu_resize_res.cols, gpu_resize_res.rows);
     // printf("resize max inter:%d\n", max_inter);
