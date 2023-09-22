@@ -101,6 +101,8 @@ void gpu_letterbox_normalize(cv::Mat &resize_out, cv::Mat& res,
             CHECK_CUDA_ERROR(cudaMemcpyAsync(data_dev, img.data, img.cols * img.rows * 3, cudaMemcpyHostToDevice, stream));
             cudapre::gpu_resize(data_dev, resize_data_dev, stream, 
                                 img.cols, img.rows, resize_width, resize_height);
+            // // gpu_resize(data_dev, resize_data_dev, stream, 
+            //                     img.cols, img.rows, resize_width, resize_height);
             // CHECK_CUDA_ERROR(cudaMemcpyAsync(resize_out.data, resize_data_dev, 
             //                                 resize_width * resize_height * 3, cudaMemcpyDeviceToHost, stream));
 
@@ -232,6 +234,7 @@ int main() {
     vector_inter = cmp_vector(cpu_out, gpu_out, out_w, out_h, 1e-5);
     printf("cpu & gpu inter:%f\n", vector_inter);
 
+
     cv::Mat gpu_fusion_all_res(out_h, out_w, CV_8UC3, color);
     std::vector<float> gpu_fusion_all_out(out_h * out_w * 3);
     cv::Mat gpu_fusion_resize_all_res;
@@ -239,6 +242,10 @@ int main() {
     vector_inter = cmp_vector(gpu_fusion_all_out, gpu_out, out_w, out_h, 1e-5);
     printf("gpu & fusion gpu inter:%f\n", vector_inter);
 
+
+    gpu_letterbox_normalize(gpu_resize_res, gpu_res, gpu_out, image_paths, out_h, out_w);
+
+    // gpu_fusion_all_host_alloc(gpu_fusion_all_res, gpu_fusion_resize_all_res, gpu_fusion_all_out, image_paths, out_h, out_w);
     // 比较结果
     // int max_inter = cmp_mat(opencv_resize_res, gpu_resize_res, gpu_resize_res.cols, gpu_resize_res.rows);
     // printf("resize max inter:%d\n", max_inter);

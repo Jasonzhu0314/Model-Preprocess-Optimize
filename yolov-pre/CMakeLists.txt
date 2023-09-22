@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 project(yolo-pre)
 
 # 设置opencv
-find_package(OpenCV REQUIRED)
+# find_package(OpenCV REQUIRED)
 
 find_package(CUDA REQUIRED)
 # 设置 CUDA 架构
@@ -15,10 +15,7 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CUDA_ARCH_FLAGS "70")
 set(CUDA_NVCC_FLAGS "-gencode arch=compute_${CUDA_ARCH_FLAGS},code=sm_${CUDA_ARCH_FLAGS}")
 
-
-set(SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
-file(GLOB SOURCES_FILE ${SOURCE_DIR}/*)
-include_directories("${PROJECT_SOURCE_DIR}/include")
+add_subdirectory(src)
 
 find_package(Boost REQUIRED COMPONENTS filesystem)
 
@@ -31,9 +28,10 @@ find_package(Boost REQUIRED COMPONENTS filesystem)
 # endif()
 # message(STATUS ${Boost_LIBRARIES})
 
-cuda_add_executable(yolo-pre ${SOURCES_FILE})
+cuda_add_executable(yolo-pre main.cc)
+# target_include_directories(yolo-pre PUBLIC ${PROJECT_SOURCE_DIR}/include)
 
-target_link_libraries(yolo-pre ${OpenCV_LIBS})
+target_link_libraries(yolo-pre cvpre)
 target_link_libraries(yolo-pre Boost::filesystem)
 
 

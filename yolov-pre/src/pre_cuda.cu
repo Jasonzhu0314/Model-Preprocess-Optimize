@@ -122,12 +122,12 @@ __global__ void reformat_kernel(float *image,
 
     if (sx < in_width && sy < in_height) {
         float* in_ptr = image + sy * in_width * 3 + sx * 3;
-        float* r_ptr = R + sy * in_width + sx;
-        float* g_ptr = G + sy * in_width + sx;
         float* b_ptr = B + sy * in_width + sx;
-        *r_ptr = in_ptr[0];
+        float* g_ptr = G + sy * in_width + sx;
+        float* r_ptr = R + sy * in_width + sx;
+        *b_ptr = in_ptr[0];
         *g_ptr = in_ptr[1];
-        *b_ptr = in_ptr[2];
+        *r_ptr = in_ptr[2];
     }
 }
 
@@ -142,19 +142,19 @@ __global__ void fusion_kernel(
     const int sy = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (sx < out_width && sy < out_height) {
-        float* r_ptr = R + sy * out_width + sx;
+        float* r_ptr = B + sy * out_width + sx;
         float* g_ptr = G + sy * out_width + sx;
-        float* b_ptr = B + sy * out_width + sx;
+        float* b_ptr = R + sy * out_width + sx;
         if (sx < left || sy < top || sx >= in_width + left || sy >= in_height + top) {
             // 边界处理
-            *r_ptr = float(border_val) * c1;
+            *b_ptr = float(border_val) * c1;
             *g_ptr = float(border_val) * c2;
-            *b_ptr = float(border_val) * c3;
+            *r_ptr = float(border_val) * c3;
         } else {
             uint8_t* in_ptr = image + (sy - top) * in_width * 3 + (sx - left) * 3;
-            *r_ptr = float(in_ptr[0]) * c1;
+            *b_ptr = float(in_ptr[0]) * c1;
             *g_ptr = float(in_ptr[1]) * c2;
-            *b_ptr = float(in_ptr[2]) * c3;
+            *r_ptr = float(in_ptr[2]) * c3;
         }
     }
 }
@@ -194,13 +194,13 @@ inline __device__ void resize_pixel(
         uint32_t sp_right = (sx + 1) * 3;
         // uint32_t dp = dst_y * out_width * 3 + dst_x * 3;
         // for (int i = 0; i < 3; i++) {
-            *r_ptr = float(uint8_t((1.0f - fx) * (aPtr[sp + 0] * (1.0f - fy) + bPtr[sp + 0] * fy)
+            *b_ptr = float(uint8_t((1.0f - fx) * (aPtr[sp + 0] * (1.0f - fy) + bPtr[sp + 0] * fy)
                             + fx * (aPtr[sp_right + 0] * (1.0f - fy) + bPtr[sp_right + 0] * fy))) * c1;
 
             *g_ptr = float(uint8_t((1.0f - fx) * (aPtr[sp + 1] * (1.0f - fy) + bPtr[sp + 1] * fy)
                             + fx * (aPtr[sp_right + 1] * (1.0f - fy) + bPtr[sp_right + 1] * fy))) * c2;
 
-            *b_ptr = float(uint8_t((1.0f - fx) * (aPtr[sp + 2] * (1.0f - fy) + bPtr[sp + 2] * fy)
+            *r_ptr = float(uint8_t((1.0f - fx) * (aPtr[sp + 2] * (1.0f - fy) + bPtr[sp + 2] * fy)
                             + fx * (aPtr[sp_right + 2] * (1.0f - fy) + bPtr[sp_right + 2] * fy))) * c3;
 }
 
@@ -217,14 +217,14 @@ __global__ void fusion_all_kernel(
     const int sy = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (sx < out_width && sy < out_height) {
-        float* r_ptr = R + sy * out_width + sx;
-        float* g_ptr = G + sy * out_width + sx;
         float* b_ptr = B + sy * out_width + sx;
+        float* g_ptr = G + sy * out_width + sx;
+        float* r_ptr = R + sy * out_width + sx;
         if (sx < left || sy < top || sx >= resized_width + left || sy >= resized_height + top) {
             // 边界处理 ,大于缩放的边界直接赋值
-            *r_ptr = float(border_val) * c1;
+            *b_ptr = float(border_val) * c1;
             *g_ptr = float(border_val) * c2;
-            *b_ptr = float(border_val) * c3;
+            *r_ptr = float(border_val) * c3;
         } else {
             // 缩放中心处理
             resize_pixel(image, sx - left, sy - top, r_ptr, g_ptr, b_ptr, 
@@ -320,9 +320,9 @@ void gpu_hwc2chw(float* image,
 
     const dim3 blockSize(BLOCK_WIDTH, THREADS_PER_BLOCK / BLOCK_WIDTH, 1);
     const dim3 gridSize(divUp(in_width, blockSize.x), divUp(in_height, blockSize.y), batch_size);
-    float* R = out_image;
+    float* B = out_image;
     float* G = out_image + in_width * in_height;
-    float* B = out_image + in_width * in_height * 2;
+    float* R = out_image + in_width * in_height * 2;
 
     reformat_kernel<<<gridSize, blockSize, 0, stream>>>
                 (image, R, G, B, in_width, in_height);
@@ -349,9 +349,9 @@ void gpu_fusion(uint8_t *image,
     const dim3 blockSize(BLOCK_WIDTH, THREADS_PER_BLOCK / BLOCK_WIDTH, 1);
     const dim3 gridSize(divUp(out_width, blockSize.x), divUp(out_height, blockSize.y), batch_size);
 
-    float* R = out_image;
+    float* B = out_image;
     float* G = out_image + out_width * out_height;
-    float* B = out_image + out_width * out_height * 2;
+    float* R = out_image + out_width * out_height * 2;
 
     fusion_kernel<<<gridSize, blockSize, 0, stream>>>(
         image, R, G, B, in_width, in_height, c1, c2, c3,
@@ -386,9 +386,9 @@ void gpu_fusion_all(uint8_t *image,
     int top = std::round(float(out_height - resized_height) / 2 - 0.1f);
     int left = std::round(float(out_width - resized_width) / 2 - 0.1f);
 
-    float* R = out_image;
+    float* B = out_image;
     float* G = out_image + out_width * out_height;
-    float* B = out_image + out_width * out_height * 2;
+    float* R = out_image + out_width * out_height * 2;
 
     fusion_all_kernel<<<gridSize, blockSize, 0, stream>>>(
         image, R, G, B, in_width, in_height, c1, c2, c3,
